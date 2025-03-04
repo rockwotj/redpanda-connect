@@ -84,7 +84,7 @@ will be replayed upon startup.
 			if err != nil {
 				return nil, err
 			}
-			limit, err := conf.FieldInt("limit", "count")
+			limit, err := conf.FieldInt("limits", "count")
 			if err != nil {
 				return nil, err
 			}
