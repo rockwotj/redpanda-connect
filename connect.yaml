@@ -1,0 +1,64 @@
+input:
+  mongodb_cdc:
+    url: mongodb://mongo_host.internal.net:27017
+    database: "my_db"
+    username: "${MONGO_USER}"
+    password: "${MONGO_PASS}"
+    collections: ["my_coll"]
+    checkpoint_key: mongodb_cdc_checkpoint
+    checkpoint_cache: "redis_cache"
+    read_batch_size: 1000
+    read_max_wait: 1s
+    stream_snapshot: true
+    snapshot_parallelism: 8
+
+pipeline:
+  processors:
+    - mapping: |
+        root = this
+        root.xml = this.binary.parse_xml()
+        root.foo = this.bar + "_" + this.baz
+        root.baz = deleted()
+
+output:
+  switch:
+    cases:
+      - check: '["read", "insert"].contains(@operation)'
+        output:
+          sql_insert:
+            driver: "postgres"
+            dsn: postgres://${PG_USER}:${PG_PASS}@pg_host.internal.net
+            table: my_table
+            columns: [id, doc]
+            args_mapping: root = [ this."_id", this.without("_id") ]
+            max_in_flight: 64
+            batching:
+              count: 100
+              period: "10s"
+      - check: '@operation == "update"'
+        output:
+          sql_raw:
+            driver: "postgres"
+            dsn: postgres://${PG_USER}:${PG_PASS}@pg_host.internal.net
+            query: 'UPDATE my_table WHERE id = $1 SET doc = $2'
+            args_mapping: root = [ this."_id", this.without("_id") ]
+            max_in_flight: 64
+            batching:
+              count: 100
+              period: "10s"
+      - check: '@operation == "update"'
+        output:
+          sql_raw:
+            driver: "postgres"
+            dsn: postgres://${PG_USER}:${PG_PASS}@pg_host.internal.net
+            query: 'DELETE FROM my_table WHERE id = $1'
+            args_mapping: root = [ this."_id" ]
+            max_in_flight: 64
+            batching:
+              count: 100
+              period: "10s"
+
+cache_resources:
+  - label: redis_cache
+    redis:
+      url: redis://redis.internal.net
