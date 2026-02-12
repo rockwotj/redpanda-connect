@@ -165,7 +165,7 @@ func TestBuildSchemaFromRecord(t *testing.T) {
 		require.NotNil(t, schema)
 
 		// Should have 0 fields
-		assert.Len(t, schema.Fields(), 0)
+		assert.Empty(t, schema.Fields())
 	})
 
 	t.Run("record with timestamp", func(t *testing.T) {

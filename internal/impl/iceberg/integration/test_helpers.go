@@ -233,7 +233,7 @@ func startTestInfrastructure(t *testing.T, ctx context.Context) *testInfrastruct
 		minioHost = "127.0.0.1"
 	}
 	infra.MinioEndpoint = fmt.Sprintf("http://%s:%s", minioHost, minioMappedPort.Port())
-	infra.MinioInternalURL = fmt.Sprintf("http://minio:%s", minioInternalPort)
+	infra.MinioInternalURL = "http://minio:" + minioInternalPort
 
 	t.Logf("MinIO started at: %s (internal: %s)", infra.MinioEndpoint, infra.MinioInternalURL)
 
@@ -274,7 +274,7 @@ func startTestInfrastructure(t *testing.T, ctx context.Context) *testInfrastruct
 		restHost = "127.0.0.1"
 	}
 	infra.RestURL = fmt.Sprintf("http://%s:%s", restHost, restMappedPort.Port())
-	infra.RestInternalURL = fmt.Sprintf("http://rest:%s", restInternalPort)
+	infra.RestInternalURL = "http://rest:" + restInternalPort
 
 	t.Logf("Iceberg REST catalog started at: %s (internal: %s)", infra.RestURL, infra.RestInternalURL)
 

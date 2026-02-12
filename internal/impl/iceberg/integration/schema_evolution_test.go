@@ -12,6 +12,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/apache/iceberg-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -127,6 +128,48 @@ func TestSchemaEvolutionIntegration(t *testing.T) {
 		err := router.Route(ctx, batch)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "disabled_evo_ns.disabled_evo_table")
+	})
+
+	t.Run("SchemaEvolution_NullInRequiredColumn", func(t *testing.T) {
+		const ns = "null_req_ns"
+		const tblName = "null_req_table"
+		infra.CreateNamespace(t, ns)
+
+		// Create table with a required column via catalog
+		client := infra.NewCatalogClient(t, ns)
+		schema := iceberg.NewSchema(
+			0,
+			iceberg.NestedField{ID: 1, Name: "id", Type: iceberg.Float64Type{}, Required: true},
+			iceberg.NestedField{ID: 2, Name: "name", Type: iceberg.StringType{}, Required: false},
+		)
+		_, err := client.CreateTable(ctx, tblName, schema)
+		require.NoError(t, err)
+
+		// Verify "id" starts as required via iceberg catalog
+		tbl, err := client.LoadTable(ctx, tblName)
+		require.NoError(t, err)
+		idField, ok := tbl.Schema().FindFieldByName("id")
+		require.True(t, ok)
+		assert.True(t, idField.Required, "id should start as required")
+
+		// Write a record with null for the required "id" column.
+		// The router should catch RequiredFieldNullError, make "id" optional, and retry.
+		router := infra.NewRouter(t, ns, tblName,
+			WithSchemaEvolution(icebergimpl.SchemaEvolutionConfig{Enabled: true}))
+
+		produce(t, ctx, router, `{"id": null, "name": "alice"}`)
+
+		// Verify "id" is now optional via iceberg catalog
+		tbl, err = client.LoadTable(ctx, tblName)
+		require.NoError(t, err)
+		idField, ok = tbl.Schema().FindFieldByName("id")
+		require.True(t, ok)
+		assert.False(t, idField.Required, "id should now be optional after schema evolution")
+
+		// Verify the data was written
+		rows := querySQL[countResult](t, ctx, infra,
+			`SELECT COUNT(*) as count FROM iceberg_cat."`+ns+`"."`+tblName+`";`)
+		assert.Equal(t, 1, rows[0].Count)
 	})
 
 	t.Run("RowCount", func(t *testing.T) {

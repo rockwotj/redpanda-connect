@@ -16,9 +16,9 @@ import (
 )
 
 var (
-	_ error             = &NewFieldError{}
-	_ SchemaFieldError  = &NewFieldError{}
-	_ error             = &BatchSchemaEvolutionError{}
+	_ error            = &NewFieldError{}
+	_ SchemaFieldError = &NewFieldError{}
+	_ error            = &BatchSchemaEvolutionError{}
 )
 
 // SchemaFieldError represents an error related to a schema field that needs evolution.

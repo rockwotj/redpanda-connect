@@ -22,7 +22,7 @@ import (
 	"github.com/apache/iceberg-go/table"
 )
 
-// catalogClient wraps the iceberg-go REST catalog client.
+// Client wraps the iceberg-go REST catalog client.
 type Client struct {
 	catalog   catalog.Catalog
 	namespace []string
@@ -168,7 +168,7 @@ func (c *Client) CreateTableWithSpec(ctx context.Context, tableName string, sche
 //	    us.AddColumn([]string{"email"}, iceberg.StringType{}, "Email address", false, nil)
 //	    us.AddColumn([]string{"age"}, iceberg.Int32Type{}, "", false, nil)
 //	})
-func (c *Client) UpdateSchema(ctx context.Context, tbl *table.Table, fn func(*table.UpdateSchema), opts ...table.UpdateSchemaOption) (*table.Table, error) {
+func (*Client) UpdateSchema(ctx context.Context, tbl *table.Table, fn func(*table.UpdateSchema), opts ...table.UpdateSchemaOption) (*table.Table, error) {
 	txn := tbl.NewTransaction()
 	updateSchema := txn.UpdateSchema(
 		true,  // caseSensitive
@@ -189,7 +189,7 @@ func (c *Client) UpdateSchema(ctx context.Context, tbl *table.Table, fn func(*ta
 }
 
 // AppendDataFiles commits a batch of data files to the table.
-func (c *Client) AppendDataFiles(ctx context.Context, tbl *table.Table, dataFiles []string) (*table.Table, error) {
+func (*Client) AppendDataFiles(ctx context.Context, tbl *table.Table, dataFiles []string) (*table.Table, error) {
 	txn := tbl.NewTransaction()
 	if err := txn.AddFiles(ctx, dataFiles, nil, true); err != nil {
 		return nil, err
@@ -236,7 +236,7 @@ func isNamespaceAlreadyExists(err error) bool {
 }
 
 // Close closes the catalog connection.
-func (c *Client) Close() error {
+func (*Client) Close() error {
 	return nil
 }
 

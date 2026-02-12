@@ -20,6 +20,7 @@ import (
 	"github.com/redpanda-data/connect/v4/internal/impl/iceberg/icebergx"
 )
 
+// RequiredFieldNullError is returned when a required field has a null or missing value.
 type RequiredFieldNullError struct {
 	Field iceberg.NestedField
 	Path  icebergx.Path
@@ -44,8 +45,8 @@ type ShreddedValue struct {
 	DefLevel int
 }
 
-// ShredderSink receives output from the shredding process.
-type ShredderSink interface {
+// Sink receives output from the shredding process.
+type Sink interface {
 	// EmitValue is called for each leaf value with its repetition/definition levels.
 	EmitValue(sv ShreddedValue) error
 
@@ -78,7 +79,7 @@ func NewRecordShredder(schema *iceberg.Schema) *RecordShredder {
 // Shred converts a nested record into a sequence of shredded values.
 // The record should be a map[string]any matching the schema structure.
 // The sink receives each leaf value and notifications of unknown fields.
-func (rs *RecordShredder) Shred(record map[string]any, sink ShredderSink) error {
+func (rs *RecordShredder) Shred(record map[string]any, sink Sink) error {
 	return rs.shredStruct(rs.schema.Fields(), record, nil, 0, 0, 0, sink)
 }
 
@@ -89,7 +90,7 @@ func (rs *RecordShredder) shredStruct(
 	value map[string]any,
 	path icebergx.Path,
 	repLevel, defLevel, maxRepLevel int,
-	sink ShredderSink,
+	sink Sink,
 ) error {
 	// Build set of known field names for new field detection.
 	knownFields := make(map[string]struct{}, len(fields))
@@ -145,7 +146,7 @@ func (rs *RecordShredder) shredValue(
 	value any,
 	path icebergx.Path,
 	repLevel, defLevel, maxRepLevel int,
-	sink ShredderSink,
+	sink Sink,
 ) error {
 	switch t := typ.(type) {
 	case *iceberg.StructType:
@@ -156,10 +157,10 @@ func (rs *RecordShredder) shredValue(
 		return rs.shredStruct(t.Fields(), mapVal, path, repLevel, defLevel, maxRepLevel, sink)
 
 	case *iceberg.ListType:
-		return rs.shredList(t, fieldID, value, path, repLevel, defLevel, maxRepLevel, sink)
+		return rs.shredList(t, value, path, repLevel, defLevel, maxRepLevel, sink)
 
 	case *iceberg.MapType:
-		return rs.shredMap(t, fieldID, value, path, repLevel, defLevel, maxRepLevel, sink)
+		return rs.shredMap(t, value, path, repLevel, defLevel, maxRepLevel, sink)
 
 	default:
 		// Leaf/primitive type.
@@ -180,11 +181,10 @@ func (rs *RecordShredder) shredValue(
 // maxRepLevel is the maximum repetition level from parent context.
 func (rs *RecordShredder) shredList(
 	listType *iceberg.ListType,
-	fieldID int,
 	value any,
 	path icebergx.Path,
 	repLevel, defLevel, maxRepLevel int,
-	sink ShredderSink,
+	sink Sink,
 ) error {
 	slice, ok := value.([]any)
 	if !ok {
@@ -236,11 +236,10 @@ func (rs *RecordShredder) shredList(
 // maxRepLevel is the maximum repetition level from parent context.
 func (rs *RecordShredder) shredMap(
 	mapType *iceberg.MapType,
-	fieldID int,
 	value any,
 	path []icebergx.PathSegment,
 	repLevel, defLevel, maxRepLevel int,
-	sink ShredderSink,
+	sink Sink,
 ) error {
 	mapVal, ok := value.(map[string]any)
 	if !ok {
@@ -313,7 +312,7 @@ func (rs *RecordShredder) shredNull(
 	typ iceberg.Type,
 	fieldID int,
 	repLevel, defLevel int,
-	sink ShredderSink,
+	sink Sink,
 ) error {
 	switch t := typ.(type) {
 	case *iceberg.StructType:

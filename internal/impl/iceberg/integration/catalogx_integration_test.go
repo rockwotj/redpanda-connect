@@ -11,7 +11,6 @@ package iceberg
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"testing"
 
@@ -220,8 +219,7 @@ func TestCatalogxIntegration(t *testing.T) {
 
 			_, err = client.LoadTable(ctx, "nonexistent_table_xyz")
 			require.Error(t, err)
-			assert.True(t, errors.Is(err, catalog.ErrNoSuchTable),
-				"expected error to wrap catalog.ErrNoSuchTable, got: %v", err)
+			assert.ErrorIs(t, err, catalog.ErrNoSuchTable)
 		})
 
 		t.Run("ErrNoSuchNamespace", func(t *testing.T) {
@@ -238,8 +236,7 @@ func TestCatalogxIntegration(t *testing.T) {
 			)
 			_, err = client.CreateTable(ctx, "test_table", schema)
 			require.Error(t, err)
-			assert.True(t, errors.Is(err, catalog.ErrNoSuchNamespace),
-				"expected error to wrap catalog.ErrNoSuchNamespace, got: %v", err)
+			assert.ErrorIs(t, err, catalog.ErrNoSuchNamespace)
 		})
 	})
 

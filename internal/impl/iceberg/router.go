@@ -22,6 +22,7 @@ import (
 	"github.com/redpanda-data/benthos/v4/public/service"
 	"github.com/redpanda-data/connect/v4/internal/impl/iceberg/catalogx"
 	"github.com/redpanda-data/connect/v4/internal/impl/iceberg/icebergx"
+	"github.com/redpanda-data/connect/v4/internal/impl/iceberg/shredder"
 )
 
 // tableKey uniquely identifies an Iceberg table.
@@ -186,6 +187,14 @@ func (r *Router) writeWithRetry(ctx context.Context, key tableKey, batch service
 			continue
 		}
 
+		var reqNullErr *shredder.RequiredFieldNullError
+		if errors.As(err, &reqNullErr) {
+			if err := r.makeColumnOptional(ctx, key, reqNullErr, entry); err != nil {
+				return fmt.Errorf("failed to make column optional for %s.%s: %w", key.namespace, key.table, err)
+			}
+			continue
+		}
+
 		// Unhandled error - fail
 		return fmt.Errorf("failed to write to %s.%s: %w", key.namespace, key.table, err)
 	}
@@ -281,7 +290,7 @@ func (r *Router) createTable(ctx context.Context, key tableKey, batch service.Me
 
 	// Get first message to infer schema
 	if len(batch) == 0 {
-		return fmt.Errorf("cannot create table from empty batch")
+		return errors.New("cannot create table from empty batch")
 	}
 
 	firstMsg := batch[0]
@@ -390,9 +399,55 @@ func (r *Router) evolveSchema(ctx context.Context, key tableKey, schemaErr *Batc
 	return nil
 }
 
+// makeColumnOptional changes a required column to optional in the table schema.
+func (r *Router) makeColumnOptional(ctx context.Context, key tableKey, reqNullErr *shredder.RequiredFieldNullError, entry *tableEntry) error {
+	entry.mu.Lock()
+	defer entry.mu.Unlock()
+
+	nsParts := strings.Split(key.namespace, ".")
+	client, err := catalogx.NewCatalogClient(r.catalogCfg, nsParts)
+	if err != nil {
+		return fmt.Errorf("failed to create catalog client: %w", err)
+	}
+	defer client.Close()
+
+	// Load current table
+	tbl, err := client.LoadTable(ctx, key.table)
+	if err != nil {
+		return fmt.Errorf("failed to load table: %w", err)
+	}
+
+	// Build column path from the error's path + field name.
+	// Only include PathField segments - skip PathListElement/PathMapEntry
+	// which don't correspond to named columns in the schema.
+	colPath := make([]string, 0, len(reqNullErr.Path)+1)
+	for _, seg := range reqNullErr.Path {
+		if seg.Kind == icebergx.PathField {
+			colPath = append(colPath, seg.Name)
+		}
+	}
+	colPath = append(colPath, reqNullErr.Field.Name)
+
+	// Update schema to make the column optional
+	_, err = client.UpdateSchema(ctx, tbl, func(us *table.UpdateSchema) {
+		us.UpdateColumn(colPath, table.ColumnUpdate{
+			Required: iceberg.Optional[bool]{Val: false, Valid: true},
+		})
+	})
+	if err != nil {
+		return fmt.Errorf("failed to update schema: %w", err)
+	}
+
+	r.logger.Infof("Made column %q optional for %s.%s", reqNullErr.Field.Name, key.namespace, key.table)
+
+	// Invalidate cached writer so it gets recreated with the new schema
+	r.closeWriter(entry)
+	return nil
+}
+
 // closeWriter closes and nils the writer in an entry.
 // Caller must hold entry.mu.Lock().
-func (r *Router) closeWriter(entry *tableEntry) {
+func (*Router) closeWriter(entry *tableEntry) {
 	if entry.writer != nil {
 		entry.writer.Close()
 		entry.writer = nil

@@ -18,7 +18,7 @@ import (
 	"github.com/redpanda-data/connect/v4/internal/impl/iceberg/icebergx"
 )
 
-// testSink is a test implementation of ShredderSink.
+// testSink is a test implementation of Sink.
 type testSink struct {
 	values    []ShreddedValue
 	newFields []newFieldRecord

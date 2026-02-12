@@ -11,6 +11,8 @@ package iceberg
 import (
 	"context"
 	"fmt"
+	"strconv"
+	"time"
 
 	"github.com/apache/iceberg-go"
 	"github.com/apache/iceberg-go/table"
@@ -86,7 +88,12 @@ func (c *committer) doCommit(ctx context.Context, inputs []CommitInput) ([]struc
 	}
 
 	txn := c.table.NewTransaction()
-	if err := txn.AddDataFiles(ctx, allFiles, nil); err != nil {
+	if err := txn.AddDataFiles(ctx, allFiles, iceberg.Properties{
+		// Merge manifests if it makes sense
+		table.ManifestMergeEnabledKey: strconv.FormatBool(true),
+		// Max snapshot age to keep (for time travel queries)
+		table.MaxSnapshotAgeMsKey: strconv.FormatInt((24 * time.Hour).Milliseconds(), 10),
+	}); err != nil {
 		return nil, fmt.Errorf("failed to add files: %w", err)
 	}
 	// Commit the transaction

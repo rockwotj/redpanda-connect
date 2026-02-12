@@ -306,7 +306,7 @@ type parquetColumn struct {
 	values []parquet.Value // accumulated values for current row
 }
 
-// parquetSink implements shredder.ShredderSink and writes values directly to column writers.
+// parquetSink implements shredder.Sink and writes values directly to column writers.
 type parquetSink struct {
 	buffer   *bytes.Buffer
 	writer   *parquet.GenericWriter[any]
