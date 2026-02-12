@@ -69,6 +69,12 @@ const (
 	ioFieldSchemaEvolutionEnabled       = "enabled"
 	ioFieldSchemaEvolutionPartitionSpec = "partition_spec"
 
+	// Commit fields
+	ioFieldCommit               = "commit"
+	ioFieldManifestMergeEnabled = "manifest_merge_enabled"
+	ioFieldMaxSnapshotAge       = "max_snapshot_age"
+	ioFieldMaxCommitRetries     = "max_retries"
+
 	// Performance fields
 	ioFieldBatching    = "batching"
 	ioFieldMaxInFlight = "max_in_flight"
@@ -269,6 +275,21 @@ map[string]any:struct
 			).Description("Schema evolution configuration.").
 				Optional().
 				Advanced(),
+
+			// Commit behavior
+			service.NewObjectField(ioFieldCommit,
+				service.NewBoolField(ioFieldManifestMergeEnabled).
+					Description("Merge small manifest files during commits to reduce metadata overhead.").
+					Default(true),
+				service.NewDurationField(ioFieldMaxSnapshotAge).
+					Description("Maximum age of snapshots to retain for time-travel queries.").
+					Default("24h"),
+				service.NewIntField(ioFieldMaxCommitRetries).
+					Description("Maximum number of times to retry a failed transaction commit.").
+					Default(3),
+			).Description("Commit behavior configuration.").
+				Advanced().
+				Optional(),
 
 			// Batching
 			service.NewBatchPolicyField(ioFieldBatching),

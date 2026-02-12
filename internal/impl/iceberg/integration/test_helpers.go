@@ -122,7 +122,12 @@ func (infra *testInfrastructure) NewRouter(
 	require.NoError(t, err)
 
 	logger := service.MockResources().Logger()
-	router := icebergimpl.NewRouter(infra.CatalogConfig(), namespaceStr, tableStr, o.schemaEvoCfg, logger)
+	commitCfg := icebergimpl.CommitConfig{
+		ManifestMergeEnabled: true,
+		MaxSnapshotAge:       24 * time.Hour,
+		MaxRetries:           3,
+	}
+	router := icebergimpl.NewRouter(infra.CatalogConfig(), namespaceStr, tableStr, o.schemaEvoCfg, commitCfg, logger)
 	t.Cleanup(func() { router.Close() })
 	return router
 }

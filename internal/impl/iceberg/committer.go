@@ -27,6 +27,13 @@ type CommitInput struct {
 	SchemaID int
 }
 
+// CommitConfig holds configuration for the committer.
+type CommitConfig struct {
+	ManifestMergeEnabled bool
+	MaxSnapshotAge       time.Duration
+	MaxRetries           int
+}
+
 // StaleSchemaError is returned when data was written with a schema
 // that no longer matches the table's current schema.
 type StaleSchemaError struct {
@@ -43,14 +50,16 @@ func (e *StaleSchemaError) Error() string {
 // Commits are serialized - only one commit at a time per committer.
 type committer struct {
 	table   *table.Table
+	cfg     CommitConfig
 	batcher *asyncroutine.Batcher[CommitInput, struct{}]
 	logger  *service.Logger
 }
 
 // NewCommitter creates a new committer for a specific table.
-func NewCommitter(tbl *table.Table, logger *service.Logger) (*committer, error) {
+func NewCommitter(tbl *table.Table, cfg CommitConfig, logger *service.Logger) (*committer, error) {
 	c := &committer{
 		table:  tbl,
+		cfg:    cfg,
 		logger: logger,
 	}
 
@@ -87,23 +96,29 @@ func (c *committer) doCommit(ctx context.Context, inputs []CommitInput) ([]struc
 		allFiles = append(allFiles, input.Files...)
 	}
 
-	txn := c.table.NewTransaction()
-	if err := txn.AddDataFiles(ctx, allFiles, iceberg.Properties{
-		// Merge manifests if it makes sense
-		table.ManifestMergeEnabledKey: strconv.FormatBool(true),
-		// Max snapshot age to keep (for time travel queries)
-		table.MaxSnapshotAgeMsKey: strconv.FormatInt((24 * time.Hour).Milliseconds(), 10),
-	}); err != nil {
-		return nil, fmt.Errorf("failed to add files: %w", err)
-	}
-	// Commit the transaction
-	if tbl, err := txn.Commit(ctx); err != nil {
-		return nil, fmt.Errorf("failed to commit transaction: %w", err)
-	} else {
+	var commitErr error
+	for attempt := range c.cfg.MaxRetries {
+		txn := c.table.NewTransaction()
+		if err := txn.AddDataFiles(ctx, allFiles, iceberg.Properties{
+			table.ManifestMergeEnabledKey: strconv.FormatBool(c.cfg.ManifestMergeEnabled),
+			table.MaxSnapshotAgeMsKey:     strconv.FormatInt(c.cfg.MaxSnapshotAge.Milliseconds(), 10),
+		}); err != nil {
+			return nil, fmt.Errorf("failed to add files: %w", err)
+		}
+		tbl, err := txn.Commit(ctx)
+		if err != nil {
+			commitErr = err
+			c.logger.Warnf("Commit attempt %d/%d failed: %v", attempt+1, c.cfg.MaxRetries, err)
+			continue
+		}
 		c.table = tbl
+		commitErr = nil
+		break
+	}
+	if commitErr != nil {
+		return nil, fmt.Errorf("failed to commit transaction after %d attempts: %w", c.cfg.MaxRetries, commitErr)
 	}
 	c.logger.Debugf("Committed %d files", len(allFiles))
-	// All succeeded - return empty responses
 	responses := make([]struct{}, len(inputs))
 	return responses, nil
 }

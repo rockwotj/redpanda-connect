@@ -12,6 +12,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"time"
 
 	"github.com/apache/iceberg-go"
 	"github.com/apache/iceberg-go/io"
@@ -91,8 +92,14 @@ func newIcebergOutputFromConfig(conf *service.ParsedConfig, mgr *service.Resourc
 		return nil, fmt.Errorf("failed to parse schema evolution config: %w", err)
 	}
 
+	// Parse commit config
+	commitCfg, err := parseCommitConfig(conf)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse commit config: %w", err)
+	}
+
 	// Create router
-	rtr := NewRouter(catalogCfg, namespaceStr, tableStr, schemaEvoCfg, mgr.Logger())
+	rtr := NewRouter(catalogCfg, namespaceStr, tableStr, schemaEvoCfg, commitCfg, mgr.Logger())
 
 	return &icebergOutput{
 		router: rtr,
@@ -433,6 +440,32 @@ func parseSchemaEvolutionConfig(conf *service.ParsedConfig) (SchemaEvolutionConf
 		}
 	}
 
+	return cfg, nil
+}
+
+// parseCommitConfig parses the commit configuration.
+func parseCommitConfig(conf *service.ParsedConfig) (CommitConfig, error) {
+	cfg := CommitConfig{
+		ManifestMergeEnabled: true,
+		MaxSnapshotAge:       24 * time.Hour,
+		MaxRetries:           3,
+	}
+	if !conf.Contains(ioFieldCommit) {
+		return cfg, nil
+	}
+	var err error
+	cfg.ManifestMergeEnabled, err = conf.FieldBool(ioFieldCommit, ioFieldManifestMergeEnabled)
+	if err != nil {
+		return cfg, err
+	}
+	cfg.MaxSnapshotAge, err = conf.FieldDuration(ioFieldCommit, ioFieldMaxSnapshotAge)
+	if err != nil {
+		return cfg, err
+	}
+	cfg.MaxRetries, err = conf.FieldInt(ioFieldCommit, ioFieldMaxCommitRetries)
+	if err != nil {
+		return cfg, err
+	}
 	return cfg, nil
 }
 

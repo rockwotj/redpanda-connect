@@ -56,6 +56,7 @@ type Router struct {
 	namespaceStr *service.InterpolatedString
 	tableStr     *service.InterpolatedString
 	schemaEvoCfg SchemaEvolutionConfig
+	commitCfg    CommitConfig
 
 	entries sync.Map // tableKey -> *tableEntry
 
@@ -68,6 +69,7 @@ func NewRouter(
 	namespaceStr *service.InterpolatedString,
 	tableStr *service.InterpolatedString,
 	schemaEvoCfg SchemaEvolutionConfig,
+	commitCfg CommitConfig,
 	logger *service.Logger,
 ) *Router {
 	return &Router{
@@ -75,6 +77,7 @@ func NewRouter(
 		namespaceStr: namespaceStr,
 		tableStr:     tableStr,
 		schemaEvoCfg: schemaEvoCfg,
+		commitCfg:    commitCfg,
 		logger:       logger,
 	}
 }
@@ -482,7 +485,7 @@ func (r *Router) createWriter(ctx context.Context, key tableKey) (*writer, error
 	}
 
 	// Create committer with its own table reference
-	comm, err := NewCommitter(committerTbl, r.logger)
+	comm, err := NewCommitter(committerTbl, r.commitCfg, r.logger)
 	if err != nil {
 		_ = client.Close()
 		return nil, fmt.Errorf("failed to create committer: %w", err)
